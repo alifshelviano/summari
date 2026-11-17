@@ -1,0 +1,91 @@
+name: Build & Deploy Summari
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # Job 1: Build & Quality Check
+  # ----------------------------------------------------------------------------
+  build:
+    name: Lint & Build Next.js App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run Linting
+        run: npm run lint
+
+      - name: Build Application
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          # Dummy values for build validation
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'dummy_gemini_key' }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.ethereal.email' }}
+
+  # ----------------------------------------------------------------------------
+  # Job 2: Deployment (Vercel / Cloud)
+  # Triggered automatically on push to main or master branch
+  # ----------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Production
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Deployment to Vercel (Recommended for Next.js fullstack)
+      # Diperlukan GitHub Secrets:
+      # - VERCEL_TOKEN (dari https://vercel.com/account/tokens)
+      # - VERCEL_ORG_ID (dari .vercel/project.json atau Project Settings)
+      # - VERCEL_PROJECT_ID (dari Project Settings)
+      - name: Deploy to Vercel
+        if: env.VERCEL_TOKEN != ''
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deployment Notice
+        if: env.VERCEL_TOKEN == ''
+        run: |
+          echo "=========================================================================="
+          echo "Build berhasil diverifikasi!"
+          echo "Untuk mengaktifkan auto-deploy Vercel, tambahkan secrets berikut di GitHub:"
+          echo "1. VERCEL_TOKEN"
+          echo "2. VERCEL_ORG_ID"
+          echo "3. VERCEL_PROJECT_ID"
+          echo "=========================================================================="
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
